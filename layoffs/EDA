@@ -1,0 +1,125 @@
+-- Exploratory Data Analysis
+
+SELECT *
+FROM layoffs_staging2;
+
+-- Maximum Total Layoffs and Percentage Laid Off
+SELECT MAX(total_laid_off), MAX(percentage_laid_off)
+FROM layoffs_staging2;
+
+-- Yearly Maximum Layoffs and Maximum Percentage Laid Off
+SELECT YEAR(`date`), MAX(total_laid_off), MAX(percentage_laid_off)
+FROM layoffs_staging2
+GROUP BY YEAR(`date`);
+
+-- Companies That Laid Off 100% of Employees (Went Under)
+SELECT COUNT(percentage_laid_off)
+FROM layoffs_staging2
+WHERE percentage_laid_off = 1
+GROUP BY percentage_laid_off;
+-- 116 companies went under
+
+-- Details of Companies That Went Under, Ordered by Funds Raised
+SELECT *
+FROM layoffs_staging2
+WHERE percentage_laid_off = 1
+ORDER BY funds_raised_millions DESC;
+
+-- Companies with the Highest Total Layoffs
+SELECT company, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY company
+ORDER BY 2 DESC;
+
+-- Date Range of Layoffs in the Dataset
+SELECT MIN(`date`), MAX(`date`)
+FROM layoffs_staging2;
+
+
+-- Total Layoffs by Industry
+SELECT industry, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY industry
+ORDER BY 2 DESC;
+
+-- Total Layoffs by Country
+SELECT country, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY country
+ORDER BY 2 DESC;
+
+-- Yearly Total Layoffs
+SELECT YEAR(`date`), SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY YEAR(`date`)
+ORDER BY 1 DESC;
+
+-- Total Layoffs by Funding Stage
+SELECT stage, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY stage
+ORDER BY 2 DESC;
+
+-- Monthly Total Layoffs with Rolling Total
+WITH rolling_total AS 
+(
+SELECT SUBSTR(`date`, 1, 7) `Month`, SUM(total_laid_off) total_off
+FROM layoffs_staging2
+WHERE SUBSTR(`date`, 1, 7) IS NOT NULL
+GROUP BY `Month`
+ORDER BY 1 ASC
+)
+SELECT `Month` , total_off
+,SUM(total_off) OVER(ORDER BY `Month`) AS rolling_total
+FROM rolling_total;
+
+-- Top 5 Companies with the Most Layoffs Each Year
+WITH Company_Year AS
+(
+SELECT YEAR(`date`) AS Years, company, SUM(total_laid_off) AS total_laid_off
+FROM layoffs_staging2
+WHERE YEAR(`date`) IS NOT NULL
+GROUP BY company, Years
+ORDER BY 1 ASC
+), Company_Ranking AS
+(
+SELECT *,
+DENSE_RANK() OVER (PARTITION BY Years ORDER BY total_laid_off DESC) AS Ranking
+FROM Company_Year
+)
+SELECT *
+FROM Company_Ranking
+WHERE Ranking <= 5
+;
+-- Top 5 companies vs sum of total laid offs
+
+-- Average Percentage Laid Off by Country
+SELECT country, AVG(percentage_laid_off) avg_percent_layoff
+FROM layoffs_staging2
+WHERE percentage_laid_off IS NOT NULL
+GROUP BY country
+ORDER BY avg_percent_layoff DESC;
+
+-- Top 5 Countries with the Highest Total Layoffs
+SELECT country, AVG(percentage_laid_off) percentage_laid_off, SUM(total_laid_off) top5_country_layoffs
+FROM layoffs_staging2
+WHERE percentage_laid_off IS NOT NULL AND total_laid_off IS NOT NULL
+GROUP BY country
+ORDER BY top5_country_layoffs DESC
+LIMIT 5;
+
+-- Top 5 and Bottom 5 Countries by Total Layoffs
+WITH ranked_countries AS
+(
+SELECT country, AVG(percentage_laid_off) avg_percentage_laid_off, SUM(total_laid_off) total_country_layoffs,
+ROW_NUMBER() OVER (ORDER BY SUM(total_laid_off) DESC) AS rank_desc,
+ROW_NUMBER() OVER (ORDER BY SUM(total_laid_off) ASC) AS rank_asc
+FROM layoffs_staging2
+WHERE percentage_laid_off IS NOT NULL 
+	AND total_laid_off IS NOT NULL
+GROUP BY country
+)
+SELECT country, avg_percentage_laid_off, total_country_layoffs, rank_asc
+FROM ranked_countries
+WHERE rank_desc <= 5 OR rank_asc <= 5
+ORDER BY rank_desc OR rank_asc
